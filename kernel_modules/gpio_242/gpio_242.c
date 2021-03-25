@@ -1,6 +1,11 @@
 #include <asm/io.h>
+
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/sysfs.h>
+#include <linux/device.h>
+#include <linux/fs.h>
+#include <linux/kobject.h>
 
 MODULE_LICENSE("GPL");
 
@@ -28,7 +33,7 @@ typedef enum {
 } gpio_function_e;
 
 typedef enum {
-	GPIO_OUTPUT__LOW,
+	GPIO_OUTPUT__LOW = 0,
 	GPIO_OUTPUT__HIGH
 } gpio_output_e;
 
@@ -63,19 +68,71 @@ static void set_gpio_output(int pin_number, gpio_output_e gpio_output) {
 	}
 }
 
-static const int LED_pin_number = 27;
+static ssize_t gpio_function_store(struct device *dev, struct device_attribute *dev_attr, const char *buf, unsigned int count) {
+	int pin_number;
+	gpio_function_e gpio_function;
+
+	printk("gpio_function %s\n", buf);
+	sscanf(buf, "%u %u", &pin_number, &gpio_function);
+
+	set_gpio_function(pin_number, gpio_function);
+
+	return count;	
+}
+
+static ssize_t gpio_output_store(struct device *dev, struct device_attribute *dev_attr, const char *buf, unsigned int count) {
+	int pin_number;
+	gpio_output_e gpio_output;
+
+	printk("gpio_output: %s", buf);
+	sscanf(buf, "%u %u", &pin_number, &gpio_output);
+
+	set_gpio_output(pin_number, gpio_output);
+
+	return count;
+}
+
+static struct device * gpio_dev;
+
+static struct kobject * gpio_root;
+
+static const struct device_attribute gpio_output_attribute = {
+	.attr = {
+		.name = "gpio_output",
+		.mode = 222,
+	},
+	.show = NULL, 
+	.store = gpio_output_store
+};
+
+static const struct device_attribute gpio_function_attribute = {
+	.attr = {
+		.name = "gpio_function",
+		.mode = 222,
+	},
+	.show = NULL, 
+	.store = gpio_function_store
+};
 
 static int gpio_242_init(void) {
 	
 	pr_alert("gpio_242: init\n");
 
-	gpio_registers = (volatile gpio_registers_s *)ioremap(GPIO_BASE, 0xB0);
+	gpio_registers = (volatile gpio_registers_s *)ioremap(GPIO_BASE, sizeof(gpio_registers_s));
 	if (NULL == gpio_registers) {
 		printk("GPIO remap failed\n");
 	} else {
-		printk("GPIO remap address %p\n", gpio_registers);
-		set_gpio_function(LED_pin_number, GPIO_FUNCTION__OUTPUT);
-		set_gpio_output(LED_pin_number, GPIO_OUTPUT__HIGH);
+		// Create /sys/devices/gpio_242
+		gpio_dev = root_device_register("gpio_242");
+		gpio_root = &gpio_dev->kobj;
+		// Create /sys/devices/gpio_242/gpio_function
+		if (sysfs_create_file(gpio_root, &gpio_function_attribute.attr)) {
+			printk("gpio_function file failed");
+		}
+		// Create /sys/devices/gpio_242/gpio_output
+		if (sysfs_create_file(gpio_root, &gpio_output_attribute.attr)) {
+			printk("gpio_output file failed");
+		}
 	}
 
 	return 0;
@@ -84,7 +141,9 @@ static int gpio_242_init(void) {
 
 static void gpio_242_exit(void) {
 	pr_alert("gpio_242: exit\n");
-	set_gpio_output(LED_pin_number, GPIO_OUTPUT__LOW);
+	sysfs_remove_file(gpio_root, &gpio_function_attribute.attr);
+	sysfs_remove_file(gpio_root, &gpio_output_attribute.attr);
+	root_device_unregister(gpio_dev);
 	iounmap(gpio_registers);
 }
 

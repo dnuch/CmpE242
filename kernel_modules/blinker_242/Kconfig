@@ -1,0 +1,9 @@
+menu "CmpE 242 Kernels"
+
+config hello_world
+	tristate "hello world!"
+	help
+		sample hello world module!
+
+endmenu
+
