@@ -1,0 +1,9 @@
+menu "CmpE 242 Kernels"
+
+config STEPPER_242
+	tristate "stepper 242"
+	help
+		Stepper motor LKM for GPIO/PWM0
+
+endmenu
+
